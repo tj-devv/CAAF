@@ -20,6 +20,21 @@ import * as path from "path";
 const DEFAULT_FEED_URL =
   "https://tochukwuezeukwu.substack.com/api/v1/posts?sort=new&limit=50";
 
+async function fetchWithRetry(url: string, retries = 3, delayMs = 5000): Promise<Response> {
+  let lastErr: Error | undefined;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+      lastErr = new Error("Feed fetch failed: " + res.status);
+    } catch (err: any) {
+      lastErr = err;
+    }
+    if (attempt < retries) await new Promise((r) => setTimeout(r, delayMs * attempt));
+  }
+  throw lastErr;
+}
+
 async function notifyTelegram(message: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -42,8 +57,7 @@ export default {
 
       let posts: any[];
       try {
-        const res = await fetch(feedUrl);
-        if (!res.ok) throw new Error("Feed fetch failed: " + res.status);
+        const res = await fetchWithRetry(feedUrl);
         posts = (await res.json()) as any[];
       } catch (err: any) {
         strapi.log.error("[substack-import] Failed to fetch feed: " + err.message);
